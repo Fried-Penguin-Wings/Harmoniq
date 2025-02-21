@@ -1,22 +1,26 @@
 package com.example.harmoniq
 
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object RetrofitInstance {
-    private const val TRANSLATE_BASE_URL = "https://translation.googleapis.com/"
+    private const val OPENAI_BASE_URL = "https://api.openai.com/v1/"
     private const val TTS_BASE_URL = "https://api.elevenlabs.io/"
 
-    val translateApi: TranslateApi by lazy {
-        retrofit2.Retrofit.Builder()
-            .baseUrl(TRANSLATE_BASE_URL)
-            .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
+    private val client = OkHttpClient.Builder().build()
+
+    val openAITranslateApi: OpenAITranslateApi by lazy {
+        Retrofit.Builder()
+            .baseUrl(OPENAI_BASE_URL) // OpenAI API base URL
+            .addConverterFactory(GsonConverterFactory.create())
+            .client(client)
             .build()
-            .create(TranslateApi::class.java)
+            .create(OpenAITranslateApi::class.java)
     }
 
     val ttsApi: TTSApi by lazy {
-        retrofit2.Retrofit.Builder()
+        Retrofit.Builder()
             .baseUrl(TTS_BASE_URL)
             .build()
             .create(TTSApi::class.java)
