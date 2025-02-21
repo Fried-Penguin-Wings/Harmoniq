@@ -463,7 +463,7 @@ fun extractTranslation(responseBody: String?): String? {
 fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: String) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val adjustedText = text.replace(" ", " , ").replace("([.!?])\\s*", "$1 ")
+            val adjustedText = text.replace("\\s+".toRegex(), " ").trim()
             val jsonRequest = """
                 {
                     "text": "$adjustedText",
