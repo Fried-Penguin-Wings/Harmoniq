@@ -17,6 +17,12 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -24,12 +30,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
@@ -54,6 +62,7 @@ val curvanaFont = FontFamily(Font(R.font.curvana))
 class MainActivity : ComponentActivity() {
     private lateinit var speechRecognizer: SpeechRecognizer
     private val mediaPlayer = MediaPlayer()
+    private var isPlayingAudio by mutableStateOf(false) // State for audio playback
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -91,7 +100,11 @@ class MainActivity : ComponentActivity() {
                         speechRecognizer = speechRecognizer,
                         openAiApiKey = openAiKey,
                         elevenLabsApiKey = elevenLabsKey,
-                        voiceId = userVoiceId
+                        voiceId = userVoiceId,
+                        isPlayingAudio = isPlayingAudio, // Pass the state
+                        onPlayingAudioChange = { newValue -> // Pass the callback
+                            isPlayingAudio = newValue
+                        }
                     )
                 }
             }
@@ -146,7 +159,9 @@ fun AppUI(
     speechRecognizer: SpeechRecognizer,
     openAiApiKey: String,
     elevenLabsApiKey: String,
-    voiceId: String
+    voiceId: String,
+    isPlayingAudio: Boolean, // Receive the state
+    onPlayingAudioChange: (Boolean) -> Unit // Callback to update the state
 ) {
     val coroutineScope = rememberCoroutineScope()
     var text by remember { mutableStateOf("Tap & Speak") }
@@ -163,6 +178,17 @@ fun AppUI(
         @Suppress("DEPRECATION")
         context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
     }
+
+    // Animation for loading indicator
+    val infiniteTransition = rememberInfiniteTransition()
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
 
     val recognitionListener = remember {
         object : RecognitionListener {
@@ -207,7 +233,7 @@ fun AppUI(
                     ) { translatedText ->
                         text = translatedText
                         lastTranslatedText = translatedText // Store the translated text
-                        playSpeech(translatedText, context, elevenLabsApiKey, voiceId)
+                        playSpeech(translatedText, context, elevenLabsApiKey, voiceId, onPlayingAudioChange)
                     }
                 } else {
                     text = "No speech recognized. Tap to try again."
@@ -265,6 +291,7 @@ fun AppUI(
                 }
             }
 
+            // Modified FloatingActionButton (Swap Languages) to adjust shadow
             FloatingActionButton(
                 onClick = {
                     inputLanguage = outputLanguage.also { outputLanguage = inputLanguage }
@@ -280,8 +307,18 @@ fun AppUI(
                 modifier = Modifier
                     .size(56.dp)
                     .padding(10.dp)
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        spotColor = Color.Black.copy(alpha = 0.2f), // Soften the shadow
+                        ambientColor = Color.Black.copy(alpha = 0.1f) // Soften the ambient shadow
+                    )
             ) {
-                Icon(Icons.Default.SwapHoriz, contentDescription = "Swap Languages", tint = MaterialTheme.colorScheme.onPrimary)
+                Icon(
+                    Icons.Default.SwapHoriz,
+                    contentDescription = "Swap input and output languages",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
             }
 
             Button(
@@ -351,9 +388,17 @@ fun AppUI(
                 modifier = Modifier
                     .padding(10.dp)
                     .fillMaxWidth()
-                    .height(50.dp),
-                shape = MaterialTheme.shapes.medium
+                    .height(50.dp)
+                    .shadow(elevation = 4.dp, shape = RoundedCornerShape(16.dp)), // Added shadow and rounded corners
+                shape = RoundedCornerShape(16.dp)
             ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Tap to speak or stop listening",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = if (isListening) "Stop Listening" else "Tap & Speak",
                     color = MaterialTheme.colorScheme.onPrimary,
@@ -362,11 +407,11 @@ fun AppUI(
                 )
             }
 
-            // New "Repeat Audio" Button
+            // Modified "Repeat Audio" Button to improve disabled state appearance
             Button(
                 onClick = {
                     lastTranslatedText?.let { translatedText ->
-                        playSpeech(translatedText, context, elevenLabsApiKey, voiceId)
+                        playSpeech(translatedText, context, elevenLabsApiKey, voiceId, onPlayingAudioChange)
                         // Haptic feedback for repeat (50ms)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -378,26 +423,46 @@ fun AppUI(
                         Log.w("REPEAT", "No translation available to repeat")
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (lastTranslatedText != null) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                    disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContentColor = Color.White.copy(alpha = 0.6f)
+                ),
                 modifier = Modifier
                     .padding(10.dp)
                     .fillMaxWidth()
-                    .height(50.dp),
-                shape = MaterialTheme.shapes.medium,
+                    .height(50.dp)
+                    .shadow(
+                        elevation = if (lastTranslatedText != null) 4.dp else 0.dp, // No shadow when disabled
+                        shape = RoundedCornerShape(16.dp)
+                    ),
+                shape = RoundedCornerShape(16.dp),
                 enabled = lastTranslatedText != null // Disable if no translation exists
             ) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Repeat Audio",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    contentDescription = "Repeat the last translated audio",
+                    tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (lastTranslatedText != null) 1f else 0.6f),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Repeat Audio",
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = if (lastTranslatedText != null) 1f else 0.6f),
                     fontSize = 18.sp,
                     fontFamily = curvanaFont
+                )
+            }
+
+            // Loading Indicator for Audio Playback
+            if (isPlayingAudio) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .padding(top = 16.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 4.dp
                 )
             }
         }
@@ -550,7 +615,7 @@ fun extractTranslation(responseBody: String?): String? {
     }
 }
 
-fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: String) {
+fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: String, onPlayingAudioChange: (Boolean) -> Unit) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val adjustedText = text.replace("\\s+".toRegex(), " ").trim()
@@ -575,14 +640,15 @@ fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: S
             }
 
             if (response?.isSuccessful == true) {
-                val audioFile = File(context.cacheDir, "tts_audio.mp3")
+                val audioFile = File(context.cacheDir, "tts_audio_${text.hashCode()}.mp3")
                 response.body()?.byteStream()?.use { input ->
                     audioFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
                 withContext(Dispatchers.Main) {
-                    (context as MainActivity).getMediaPlayer().apply {
+                    val mainActivity = context as MainActivity
+                    mainActivity.getMediaPlayer().apply {
                         reset()
                         setDataSource(audioFile.absolutePath)
                         prepare()
@@ -592,13 +658,24 @@ fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: S
                         start()
                         Log.d("TTS", "MediaPlayer started at speed 0.9")
                     }
+                    onPlayingAudioChange(true) // Start loading indicator
+                    // Stop loading indicator when playback ends
+                    mainActivity.getMediaPlayer().setOnCompletionListener {
+                        onPlayingAudioChange(false)
+                    }
                 }
                 Log.d("TTS", "Speech played successfully")
             } else {
                 Log.e("TTS", "API call failed: code=${response?.code()}, message=${response?.errorBody()?.string()}")
+                withContext(Dispatchers.Main) {
+                    onPlayingAudioChange(false) // Ensure loading stops on failure
+                }
             }
         } catch (e: Exception) {
             Log.e("TTS", "Error playing speech: ${e.message}", e)
+            withContext(Dispatchers.Main) {
+                onPlayingAudioChange(false) // Ensure loading stops on error
+            }
         }
     }
 }
