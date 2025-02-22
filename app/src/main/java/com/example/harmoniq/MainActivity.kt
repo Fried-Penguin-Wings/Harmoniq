@@ -467,7 +467,6 @@ fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: S
             val jsonRequest = """
                 {
                     "text": "$adjustedText",
-                    "voice_id": "$voiceId",
                     "model_id": "eleven_multilingual_v2",
                     "voice_settings": {
                         "stability": 0.5,
@@ -482,7 +481,7 @@ fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: S
                 maxRetries = 3,
                 initialDelay = 1000L
             ) {
-                RetrofitInstance.ttsApi.textToSpeech(elevenLabsKey, requestBody)
+                RetrofitInstance.ttsApi.textToSpeech(voiceId, elevenLabsKey, requestBody)
             }
 
             if (response?.isSuccessful == true) {

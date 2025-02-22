@@ -23,12 +23,10 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"${project.findProperty("GOOGLE_TRANSLATE_API_KEY") ?: ""}\"")
             buildConfigField("String", "ELEVEN_LABS_API_KEY", "\"${project.findProperty("ELEVEN_LABS_API_KEY") ?: ""}\"")
         }
         release {
             isMinifyEnabled = false
-            buildConfigField("String", "GOOGLE_TRANSLATE_API_KEY", "\"${project.findProperty("GOOGLE_TRANSLATE_API_KEY") ?: ""}\"")
             buildConfigField("String", "ELEVEN_LABS_API_KEY", "\"${project.findProperty("ELEVEN_LABS_API_KEY") ?: ""}\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
