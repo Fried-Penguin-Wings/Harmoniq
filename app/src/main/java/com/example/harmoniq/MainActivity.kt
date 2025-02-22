@@ -5,7 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -20,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -148,11 +153,28 @@ fun AppUI(
     var isListening by remember { mutableStateOf(false) }
     var inputLanguage by remember { mutableStateOf("en") }
     var outputLanguage by remember { mutableStateOf("es") }
+    var lastTranslatedText by remember { mutableStateOf<String?>(null) } // Store the last translated text
+
+    // Use VibratorManager for API 31+ or Vibrator for older devices
+    val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+        vibratorManager.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+    }
 
     val recognitionListener = remember {
         object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 text = "Listening..."
+                // Haptic for start of listening (30ms)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(30)
+                }
             }
             override fun onBeginningOfSpeech() {}
             override fun onRmsChanged(rmsdB: Float) {}
@@ -162,6 +184,13 @@ fun AppUI(
                 text = "Error occurred: $error. Tap to try again."
                 isListening = false
                 Log.e("SPEECH", "Recognition error: $error")
+                // Haptic for error (three 50ms pulses)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 50, 50, 50), -1))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(150)
+                }
             }
             override fun onResults(results: Bundle?) {
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -177,6 +206,7 @@ fun AppUI(
                         openAiApiKey
                     ) { translatedText ->
                         text = translatedText
+                        lastTranslatedText = translatedText // Store the translated text
                         playSpeech(translatedText, context, elevenLabsApiKey, voiceId)
                     }
                 } else {
@@ -236,7 +266,16 @@ fun AppUI(
             }
 
             FloatingActionButton(
-                onClick = { inputLanguage = outputLanguage.also { outputLanguage = inputLanguage } },
+                onClick = {
+                    inputLanguage = outputLanguage.also { outputLanguage = inputLanguage }
+                    // Haptic feedback for language swap (100ms)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(100)
+                    }
+                },
                 containerColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .size(56.dp)
@@ -251,6 +290,13 @@ fun AppUI(
                         speechRecognizer.stopListening()
                         isListening = false
                         text = "Tap & Speak"
+                        // Haptic feedback for stopping (50ms)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(50)
+                        }
                     } else {
                         isListening = true
                         val fullInputLanguage = when (inputLanguage) {
@@ -292,6 +338,13 @@ fun AppUI(
                         Log.d("SPEECH", "Starting recognition with language: $fullInputLanguage")
                         speechRecognizer.setRecognitionListener(recognitionListener)
                         speechRecognizer.startListening(intent)
+                        // Haptic feedback for starting (50ms)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(50)
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -303,6 +356,45 @@ fun AppUI(
             ) {
                 Text(
                     text = if (isListening) "Stop Listening" else "Tap & Speak",
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    fontSize = 18.sp,
+                    fontFamily = curvanaFont
+                )
+            }
+
+            // New "Repeat Audio" Button
+            Button(
+                onClick = {
+                    lastTranslatedText?.let { translatedText ->
+                        playSpeech(translatedText, context, elevenLabsApiKey, voiceId)
+                        // Haptic feedback for repeat (50ms)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(50)
+                        }
+                    } ?: run {
+                        Log.w("REPEAT", "No translation available to repeat")
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                modifier = Modifier
+                    .padding(10.dp)
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = MaterialTheme.shapes.medium,
+                enabled = lastTranslatedText != null // Disable if no translation exists
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Repeat Audio",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Repeat Audio",
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 18.sp,
                     fontFamily = curvanaFont
@@ -320,7 +412,6 @@ fun LanguageDropdown(
     onValueSelected: (String) -> Unit
 ) {
     val languages = mapOf(
-        // Most common languages first
         "🇺🇸 English" to "en",
         "🇪🇸 Spanish" to "es",
         "🇨🇳 Chinese" to "zh",
@@ -329,7 +420,6 @@ fun LanguageDropdown(
         "🇸🇦 Arabic" to "ar",
         "🇵🇹 Portuguese" to "pt",
         "🇷🇺 Russian" to "ru",
-        // Remaining languages in alphabetical order
         "🇧🇬 Bulgarian" to "bg",
         "🇭🇷 Croatian" to "hr",
         "🇨🇿 Czech" to "cs",
@@ -496,7 +586,7 @@ fun playSpeech(text: String, context: Context, elevenLabsKey: String, voiceId: S
                         reset()
                         setDataSource(audioFile.absolutePath)
                         prepare()
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             playbackParams = playbackParams.setSpeed(0.9f)
                         }
                         start()
