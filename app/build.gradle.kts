@@ -15,8 +15,8 @@ android {
         applicationId = "com.example.harmoniq"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2  // Increment to 2 for version 1.1
+        versionName = "1.1"  // Update to 1.1 as requested
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
